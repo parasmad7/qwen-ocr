@@ -1,12 +1,18 @@
 # Qwen3.5-4B Handwriting OCR Lab
 
-This repository contains scripts to fine-tune the **Qwen3.5-4B** multimodal model on the **IAM Handwriting Database**.
+This repository contains scripts to fine-tune the **Qwen3.5-4B** multimodal model for both **line-level** and **full-page** handwriting recognition.
 
 ## Project Structure
-- `scripts/prepare_data.py`: Downloads the IAM-line dataset from Hugging Face and formats it for Qwen3.5.
-- `scripts/train.py`: Fine-tunes the model using LoRA on A100 GPUs.
-- `scripts/inference.py`: Runs inference on a fine-tuned model checkpoint.
-- `requirements.txt`: Python dependencies.
+The project is split into two specialized pipelines:
+- `scripts/line/`: Scripts for line-level OCR training and evaluation on the IAM-line dataset.
+- `scripts/page/`: Scripts for full-page OCR training, synthetic data generation, and evaluation. 
+
+Key files in each directory:
+- `generate_synthetic.py` (page only): Generates high-fidelity full-page synthetic handwriting.
+- `train.py`: Unsloth-optimized QLoRA fine-tuning script.
+- `inference.py`: Single-image inference.
+- `evaluate.py`: Calculates Character Error Rate (CER) and Word Error Rate (WER).
+- `evaluate_final.py`: Production-grade evaluation logic with strict stop-strings.
 
 ## Setup
 1. Install **uv** (if not already installed):
@@ -27,19 +33,23 @@ This repository contains scripts to fine-tune the **Qwen3.5-4B** multimodal mode
    ```
 
 ## Training
-To start training on A100 GPUs using **accelerate**:
+To start training on A100 GPUs (requires ~35GB VRAM for full-page):
 ```bash
-accelerate launch scripts/train.py
-```
-The script is configured for **LoRA** in **bf16** precision, which is optimal for A100 performance.
+# Line-level training
+CUDA_VISIBLE_DEVICES=0 python scripts/line/train.py
 
-## Inference
-After training, you can test the model:
+# Full-page training
+CUDA_VISIBLE_DEVICES=0 python scripts/page/train.py
+```
+The scripts are heavily optimized using **Unsloth** and **QLoRA** (4-bit), utilizing `finetune_vision_layers` and custom DataCollators to mask prompts and prevent "prompt washing".
+
+## Evaluation & Inference
+Test the model and calculate CER/WER:
 ```bash
-python scripts/inference.py --model_path outputs/qwen3.5-iam-lora --image_path path/to/handwriting.png
+python scripts/page/evaluate.py --model "outputs/page/qwen3.5-4B" --data_dir "data/synthetic_test" --batch_size 4
 ```
 
 ## Hardware Requirements
-- **GPU:** NVIDIA A100 (40GB or 80GB recommended).
+- **GPU:** NVIDIA A100 (40GB or 80GB recommended). 
 - **RAM:** 32GB+.
 - **Storage:** 20GB+ for model and data.
