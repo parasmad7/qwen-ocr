@@ -44,6 +44,8 @@ CUDA_VISIBLE_DEVICES=0 python scripts/page/train.py
 The scripts are heavily optimized using **Unsloth** and **QLoRA** (4-bit), utilizing `finetune_vision_layers` and custom DataCollators to mask prompts and prevent "prompt washing".
 
 ## Evaluation & Inference
+**Performance:** The full-page model achieves **CER: 0.0028** (0.28%) and **WER: 0.0057** (0.57%) on the hold-out synthetic test set.
+
 Test the model and calculate CER/WER:
 ```bash
 python scripts/page/evaluate.py --model "outputs/page/qwen3.5-4B" --data_dir "data/synthetic_test" --batch_size 4

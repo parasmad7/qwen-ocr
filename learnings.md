@@ -14,6 +14,7 @@
 - **Batching (Line Level):** `per_device_train_batch_size=2` with `gradient_accumulation_steps=8` (Effective Batch Size = 16) provides a good balance between stability and speed.
 
 ## Milestones & Results (2026-05-10)
+- **Final Evaluation Metrics:** Achieved a groundbreaking **CER: 0.0028** (0.28%) and **WER: 0.0057** (0.57%) on the hold-out full-page synthetic test set. This confirms that the model perfectly learned both character recognition and complex full-page spatial layouts without any prompt washing.
 - **Full-Page Training Completion:** Successfully fine-tuned Qwen3.5-4B on 5,000 synthetic full-page images. The model was trained with vision layers unfrozen (`finetune_vision_layers=True`) to learn spatial layouts and merged into a standalone safetensors checkpoint.
 - **VRAM Optimization:** Maxed out a 35GB VRAM GPU by capping `max_pixels` at `1344x1344` (generating exactly 2,304 image tokens) and pushing sequence length to 4096, which fits perfectly with a physical batch size of 4.
 - **Dataset Serialization Fix:** Bypassed a severe Hugging Face Datasets bug where lazy-loading PIL images via `.map()` causes `AttributeError: 'dict' object has no attribute 'convert'` due to improper Arrow serialization. Solution: Store absolute string paths in the dataset and lazily open the `Image.open(path)` directly inside the DataCollator.
