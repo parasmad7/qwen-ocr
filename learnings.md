@@ -20,6 +20,7 @@
 - **Dataset Serialization Fix:** Bypassed a severe Hugging Face Datasets bug where lazy-loading PIL images via `.map()` causes `AttributeError: 'dict' object has no attribute 'convert'` due to improper Arrow serialization. Solution: Store absolute string paths in the dataset and lazily open the `Image.open(path)` directly inside the DataCollator.
 
 ## Milestones & Results (2026-05-09)
+- **Full-Page Baseline Benchmarked:** Established a zero-shot baseline of **CER: 0.0377** (3.77%) and **WER: 0.2233** (22.33%) for the raw `Qwen3.5-4B` model on the synthetic full-page dataset (after implementing robust `<think>` tag stripping).
 - **Synthetic Layout Generation:** Built a robust data generator for full-page OCR that correctly mimics Qwen's top-to-bottom, left-to-right reading order. Implemented a proportional spacing algorithm to explicitly inject space tokens into the ground truth where large physical gaps exist (e.g., between main text and marginalia).
 - **Decoupled Evaluation:** Updated `evaluate.py` to run a whitespace normalization pass before calculating CER and WER. This allows us to train the model on complex spatial layouts (heavy spacing) without whitespace mismatches artificially destroying transcription accuracy metrics.
 
