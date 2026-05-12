@@ -1,60 +1,50 @@
 # Project Learnings: Qwen3.5 Handwriting Fine-Tuning
 
-## Milestones & Results (2026-05-12)
-- **Unified Evaluation Pipeline:** Consolidated disparate evaluation scripts into a single, CLI-driven `evaluate.py` for each pipeline. This simplifies execution on remote servers and ensures both zero-shot and fine-tuned models are tested using identical logic.
-- **Robust Metric Normalization:** Implemented `NFKC` Unicode normalization and whitespace collapsing prior to CER/WER calculation. This prevents trivial character representation or formatting differences from skewing performance metrics.
-- **Outlier Analysis Tooling:** Added automatic outlier detection (CER > 10%) to all evaluation scripts. This provides immediate visibility into difficult samples during large-batch evaluations, facilitating faster debugging of model failure modes.
-- **Deterministic Inference:** Standardized `do_sample=False` and `temperature=0` across all inference paths. Determinism is critical for stable OCR benchmarking and deployment.
-- **Mixed Precision Inference:** Leveraged `bfloat16` for inference when supported by the hardware, optimizing both throughput and memory efficiency on A100-class GPUs.
-- **Hardware Agnostic Logic:** Replaced hardcoded `.to("cuda")` with `.to(model.device)` across utility scripts to ensure compatibility across different GPU and software environments.
+## 🏆 Key Milestones & Results
 
-## Model Details
+### Selective OCR (Ongoing - 2026-05-12)
+- **Phase 1 Result:** Achieved **CER: 4.11** / **WER: 4.58** on the initial 500-step fine-tune.
+- **Baseline Comparison:** Prior to selective training, the model failed completely (**CER: 5.04**), proving that specialized fine-tuning is required to override the "transcribe-everything" bias.
+- **Synthetic Data Edge Case:** Discovered that strikeouts must pass through the vertical center of characters (`textbbox` centering) to be recognized as deletions rather than overlines.
+
+### Full-Page OCR (Completed - 2026-05-10)
+- **Fine-Tuned Result:** Achieved **CER: 0.0028** (0.28%) and **WER: 0.0057** (0.57%) on hold-out synthetic data.
+- **Baseline:** Zero-shot performance on synthetic data showed significant structure failure prior to fine-tuning.
+- **Scaling:** Successfully scaled to 5,000 synthetic samples with mixed paper styles and marginalia.
+
+### Line-Level OCR (Completed - 2026-05-06)
+- **Fine-Tuned Result:** Achieved **CER: 0.045** and **WER: 0.082** on the IAM-line test set.
+- **Baseline:** Zero-shot Qwen3.5-4B on IAM-line: **CER: 0.1264** / **WER: 0.2452**.
+- **Insight:** Fine-tuning on domain-specific handwriting (IAM) reduced the error rate by over 60%.
+
+---
+
+## 💡 Technical Insights
+
+### Selective OCR Module
+- **High-Fidelity Synthetic Messiness:** Developed a synthetic generation pipeline (`generate_synthetic.py`) that replicates 5 distinct strikeout styles (double-line, wavy, cross-hatch, etc.).
+- **Overcoming Transcription Bias:** Learned that the model has a strong habit of turning visual noise into garbage text. Fine-tuning with a mix of clean (30%) and messy (70%) pages is required to teach "selective skipping."
+- **Inference Speed Optimization:** Discovered that full-page inference was extremely slow (45s/image) due to visual token explosion. Capping resolution at `1024x1024` pixels (`max_pixels`) provided a ~4x speedup.
+- **Batch Scaling:** Successfully scaled evaluation to `batch_size=16` on 45GB VRAM by combining resolution capping with BF16 precision.
+
+### Training & Memory Management
+- **Batching (Full Page, 35GB VRAM):** `per_device_train_batch_size=4` with `gradient_accumulation_steps=16` at `max_pixels=1344x1344` maximizes GPU utilization without OOM errors.
+- **Batching (Line Level):** `per_device_train_batch_size=2` with `gradient_accumulation_steps=8` provides stable line-level convergence.
+- **Optimization:** Consistently used `adamw_8bit` and `gradient_checkpointing="unsloth"` to stabilize high-resolution multimodal training.
+
+---
+
+## 🛠️ Infrastructure & Tooling
+- **Unified Evaluation Pipeline:** Consolidated disparate scripts into a single, CLI-driven `evaluate.py` for each module.
+- **Robust Metric Normalization:** Implemented `NFKC` Unicode normalization and whitespace collapsing prior to CER/WER calculation.
+- **Outlier Analysis:** Added automatic outlier detection (CER > 10%) to quickly identify model failure modes.
+- **Deterministic Inference:** Standardized `do_sample=False` and `temperature=0` across all inference paths.
+
+---
+
+## 📝 Model Specifications
 - **Model:** Qwen3.5-4B (Multimodal)
 - **Architecture:** Gated Delta Networks + Gated Attention.
 - **Release Date:** March 2, 2026.
-- **Capabilities:** Strong zero-shot OCR; fine-tuning on IAM improves domain-specific handwriting recognition.
-
-## Fine-Tuning Strategy
-- **Method:** LoRA (Low-Rank Adaptation).
-- **Optimization:** BF16 precision for A100 GPUs.
 - **Data Format:** Conversational JSONL with `<|vision_start|><|image_pad|><|vision_end|>` markers.
-- **Batching (Full Page, 35GB VRAM):** `per_device_train_batch_size=4` with `gradient_accumulation_steps=16` (Effective Batch Size = 64) at `max_pixels=1344x1344` maximizes GPU utilization while preventing OOM errors on large context lengths (4096 tokens).
-- **Batching (Line Level):** `per_device_train_batch_size=2` with `gradient_accumulation_steps=8` (Effective Batch Size = 16) provides a good balance between stability and speed.
-
-## Milestones & Results (2026-05-10)
-- **Final Evaluation Metrics:** Achieved a groundbreaking **CER: 0.0028** (0.28%) and **WER: 0.0057** (0.57%) on the hold-out full-page synthetic test set. This confirms that the model perfectly learned both character recognition and complex full-page spatial layouts without any prompt washing.
-- **Full-Page Training Completion:** Successfully fine-tuned Qwen3.5-4B on 5,000 synthetic full-page images. The model was trained with vision layers unfrozen (`finetune_vision_layers=True`) to learn spatial layouts and merged into a standalone safetensors checkpoint.
-- **VRAM Optimization:** Maxed out a 35GB VRAM GPU by capping `max_pixels` at `1344x1344` (generating exactly 2,304 image tokens) and pushing sequence length to 4096, which fits perfectly with a physical batch size of 4.
-- **Dataset Serialization Fix:** Bypassed a severe Hugging Face Datasets bug where lazy-loading PIL images via `.map()` causes `AttributeError: 'dict' object has no attribute 'convert'` due to improper Arrow serialization. Solution: Store absolute string paths in the dataset and lazily open the `Image.open(path)` directly inside the DataCollator.
-
-## Milestones & Results (2026-05-09)
-- **Full-Page Baseline Benchmarked:** Established a zero-shot baseline of **CER: 0.0377** (3.77%) and **WER: 0.2233** (22.33%) for the raw `Qwen3.5-4B` model on the synthetic full-page dataset (after implementing robust `<think>` tag stripping).
-- **Synthetic Layout Generation:** Built a robust data generator for full-page OCR that correctly mimics Qwen's top-to-bottom, left-to-right reading order. Implemented a proportional spacing algorithm to explicitly inject space tokens into the ground truth where large physical gaps exist (e.g., between main text and marginalia).
-- **Decoupled Evaluation:** Updated `evaluate.py` to run a whitespace normalization pass before calculating CER and WER. This allows us to train the model on complex spatial layouts (heavy spacing) without whitespace mismatches artificially destroying transcription accuracy metrics.
-
-## Milestones & Results (2026-05-06)
-- **Fine-Tuning Accuracy (Checkpoint 300):** Achieved a clean **CER: 0.0236** and **WER: 0.0697** on the IAM-line test set.
-- **Rambling Mitigation:** Identified that Qwen3.5 can "ramble" (repeat system/user tokens) after transcribing. Resolved this by using `stop_strings=["\n", "user"]` and post-processing.
-- **Inference Stability:** Confirmed that for single-line OCR, forcing a split on the first newline/user keyword is a robust way to filter out post-prediction noise.
-- **Token Slicing Logic:** Identified that for decoder-only models (like Qwen/Llama), `model.generate()` returns the entire sequence including the prompt. Manual slicing using `len(input_ids)` is required to isolate the predicted transcription from the system and user instructions.
-- **Full-Page Transition:** Initiated the scaling up phase. Created a dedicated pipeline in `scripts/full_page/` that enables vision-layer fine-tuning and supports up to 2048 tokens for document-level transcription.
-
-## Milestones & Results (2026-05-03)
-- **Baseline Benchmarked:** Established a zero-shot baseline of **CER: 0.0378** and **WER: 0.2406** on the IAM-line dataset.
-- **Pipeline Hardened:** Successfully configured a DDP (Distributed Data Parallel) training script for 2x A100-80GB GPUs using Unsloth.
-
-## Key Technical Takeaways
-- **Direct OCR Behavior:** For instruct-tuned Qwen models, setting `enable_thinking=False` and using a strict system prompt is critical to suppress "chain-of-thought" chatter during transcription.
-- **Multi-Modal Data Collators:** Standard `SFTTrainer` defaults fail for Vision-Language models because they don't know how to batch images. A custom `DataCollator` that utilizes the model's `processor` to interleave text tokens and image tensors is mandatory.
-- **Path Resolution in Unsloth:** When loading local adapters or merged models, using `os.path.abspath()` is the most reliable way to prevent the loader from confusing local directories with Hugging Face Hub IDs.
-- **Efficiency:** Training a 4B model with LoRA on A100s is extremely efficient; 5 epochs were completed in under 40 minutes while achieving production-grade accuracy.
-- **Vision Layer Criticality:** For full-page OCR, enabling `finetune_vision_layers=True` in LoRA is essential. The vision encoder needs to adapt to the spatial complexity and density of full pages.
-- **Sequence Length Scaling:** Full-page transcription requires significantly higher `max_seq_length` (2048+) compared to line-level (512), impacting VRAM and requiring gradient accumulation.
-- **VLM Spatial Bias:** Vision-Language Models process images via raster scan (top-bottom, left-right). Creating ground truth text that forces "semantic reading" (e.g., placing right-margin notes at the end of the text) actively fights this bias and leads to hallucinations and slow convergence.
-- **Explicit Layout Formatting:** Pre-trained VLMs naturally collapse large white space. To teach the model to preserve layout structure, horizontal gaps must be explicitly mapped to proportional space tokens during fine-tuning.
-- **Transcription vs. Layout Metrics:** Standard Levenshtein-based metrics (CER/WER) harshly penalize whitespace variations. Whitespace must be normalized prior to evaluation to accurately measure word-level reading capability independently of formatting.
-
-## Future Extensions
-- **Synthetic Data Augmentation:** Implementing random noise, shadows, and perspective transforms to handle non-white backgrounds.
-- **Full Form OCR:** Transitioning from line-level to paragraph-level to leverage Qwen's vision-encoder spatial awareness.
-- **Multi-GPU Scaling:** Exploring FSDP (Fully Sharded Data Parallel) for larger 72B Qwen models.
+- **Fine-Tuning Method:** LoRA (Low-Rank Adaptation) using Unsloth.
