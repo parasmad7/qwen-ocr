@@ -1,5 +1,13 @@
 # Project Learnings: Qwen3.5 Handwriting Fine-Tuning
 
+## Milestones & Results (2026-05-12)
+- **Unified Evaluation Pipeline:** Consolidated disparate evaluation scripts into a single, CLI-driven `evaluate.py` for each pipeline. This simplifies execution on remote servers and ensures both zero-shot and fine-tuned models are tested using identical logic.
+- **Robust Metric Normalization:** Implemented `NFKC` Unicode normalization and whitespace collapsing prior to CER/WER calculation. This prevents trivial character representation or formatting differences from skewing performance metrics.
+- **Outlier Analysis Tooling:** Added automatic outlier detection (CER > 10%) to all evaluation scripts. This provides immediate visibility into difficult samples during large-batch evaluations, facilitating faster debugging of model failure modes.
+- **Deterministic Inference:** Standardized `do_sample=False` and `temperature=0` across all inference paths. Determinism is critical for stable OCR benchmarking and deployment.
+- **Mixed Precision Inference:** Leveraged `bfloat16` for inference when supported by the hardware, optimizing both throughput and memory efficiency on A100-class GPUs.
+- **Hardware Agnostic Logic:** Replaced hardcoded `.to("cuda")` with `.to(model.device)` across utility scripts to ensure compatibility across different GPU and software environments.
+
 ## Model Details
 - **Model:** Qwen3.5-4B (Multimodal)
 - **Architecture:** Gated Delta Networks + Gated Attention.

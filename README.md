@@ -6,13 +6,13 @@ This repository contains scripts to fine-tune the **Qwen3.5-4B** multimodal mode
 The project is split into two specialized pipelines:
 - `scripts/line/`: Scripts for line-level OCR training and evaluation on the IAM-line dataset.
 - `scripts/page/`: Scripts for full-page OCR training, synthetic data generation, and evaluation. 
+- `scripts/selective/`: Scripts for selective OCR (ignoring strikeouts) training and evaluation.
 
-Key files in each directory:
-- `generate_synthetic.py` (page only): Generates high-fidelity full-page synthetic handwriting.
-- `train.py`: Unsloth-optimized QLoRA fine-tuning script.
-- `inference.py`: Single-image inference.
-- `evaluate.py`: Calculates Character Error Rate (CER) and Word Error Rate (WER).
-- `evaluate_final.py`: Production-grade evaluation logic with strict stop-strings.
+### Key Features
+- **Unified Evaluation**: A single `evaluate.py` script per pipeline that handles both base and fine-tuned models.
+- **Robust Metrics**: Character and Word Error Rates (CER/WER) are calculated after NFKC Unicode normalization and whitespace collapsing.
+- **Outlier Analysis**: Evaluation scripts automatically identify and report samples with CER > 10% for easy debugging.
+- **Deterministic Inference**: Generation is locked to `do_sample=False` and `temperature=0` for stable OCR output.
 
 ## Setup
 1. Install **uv** (if not already installed):
@@ -46,9 +46,23 @@ The scripts are heavily optimized using **Unsloth** and **QLoRA** (4-bit), utili
 ## Evaluation & Inference
 **Performance:** The full-page model achieves **CER: 0.0028** (0.28%) and **WER: 0.0057** (0.57%) on the hold-out synthetic test set.
 
-Test the model and calculate CER/WER:
+Evaluation scripts identify "Outliers" (samples with CER > 10%) to help pinpoint failure modes.
+
+### Run Evaluation
 ```bash
-python scripts/page/evaluate.py --model "outputs/page/qwen3.5-4B" --data_dir "data/synthetic_test" --batch_size 4
+# Line-level (Default to Qwen/Qwen3.5-4B base model)
+python scripts/line/evaluate.py --num_samples 100
+
+# Fine-tuned Line Model
+python scripts/line/evaluate.py --model "outputs/line/checkpoint-300"
+
+# Full-page Model
+python scripts/page/evaluate.py --model "outputs/page/qwen3.5-4B" --batch_size 4
+```
+
+### Run Single Inference
+```bash
+python scripts/line/inference.py --model "outputs/line/checkpoint-300" --image "test_sample.png"
 ```
 
 ## Hardware Requirements

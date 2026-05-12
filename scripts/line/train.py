@@ -69,7 +69,6 @@ class QwenDataCollator:
 
 def train():
     # 0. GPU Diagnostics
-    import torch
     if torch.cuda.is_available():
         free_gpu_mem, total_gpu_mem = torch.cuda.mem_get_info()
         print(f"\n" + "="*40)
