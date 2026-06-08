@@ -1,5 +1,6 @@
 import os
 import torch
+import unicodedata
 from unsloth import FastVisionModel
 from datasets import load_dataset
 from transformers import TrainingArguments
@@ -8,12 +9,16 @@ from PIL import Image
 
 # Configuration
 MODEL_ID = "Qwen/Qwen3.5-4B"
-OUTPUT_DIR = "outputs/qwen3.5-iam-lora"
+OUTPUT_DIR = "outputs/line/qwen3.5-4B-iam-lora"
 
 # Avoid memory fragmentation
 os.environ["PYTORCH_ALLOC_CONF"] = "expandable_segments:True"
 
 class QwenDataCollator:
+    """
+    Custom Data Collator for Qwen-VL that handles multimodal inputs (text + images)
+    and masks labels for completion-only training (prompt-masking).
+    """
     def __init__(self, processor):
         self.processor = processor
 
@@ -83,6 +88,7 @@ def train():
     model, processor = FastVisionModel.from_pretrained(
         model_name = MODEL_ID,
         load_in_4bit = True,
+        torch_dtype = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16,
         trust_remote_code = True,
     )
 
@@ -107,10 +113,14 @@ def train():
     # 4. Preparation Function
     def format_dataset(example):
         system_prompt = "You are a specialized OCR engine. Output ONLY the transcribed text from the image without any explanation or reasoning."
+        
+        # Apply NFKC Unicode normalization to standardize characters
+        normalized_text = unicodedata.normalize("NFKC", example["text"])
+        
         messages = [
             {"role": "system", "content": [{"type": "text", "text": system_prompt}]},
             {"role": "user", "content": [{"type": "image", "image": example["image"]}, {"type": "text", "text": "Transcribe the text in this image."}]},
-            {"role": "assistant", "content": [{"type": "text", "text": example["text"]}]}
+            {"role": "assistant", "content": [{"type": "text", "text": normalized_text}]}
         ]
         # We store the applied template text in a new column
         example["prompt_text"] = processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=False, enable_thinking=False)
@@ -122,7 +132,7 @@ def train():
     training_args = TrainingArguments(
         output_dir=OUTPUT_DIR,
         per_device_train_batch_size=4,  # Increased to 4 for faster throughput
-        gradient_accumulation_steps=16, # Decreased to 16 (Effective batch size remains 64)
+        gradient_accumulation_steps=16, # Effective batch size = 64
         warmup_steps=50,
         max_steps=500,
         learning_rate=2e-4,
@@ -171,11 +181,11 @@ def train():
         print(f"\n[Sample {i} Decoded GT]:\n{decoded_labels[i]}")
     print("\n" + "="*60 + "\n")
 
-    # Start Training
+    # 8. Start Training
     print("Starting training...")
     trainer.train()
     
-    # Save Final Model
+    # 9. Save Final Model
     print(f"Saving model to {OUTPUT_DIR}...")
     model.save_pretrained_merged(OUTPUT_DIR, processor, save_method = "lora",)
     print("Training complete!")

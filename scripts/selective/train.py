@@ -1,5 +1,6 @@
 import os
 import torch
+import unicodedata
 from unsloth import FastVisionModel
 from datasets import load_dataset
 from transformers import TrainingArguments
@@ -7,8 +8,8 @@ from trl import SFTTrainer
 from PIL import Image
 
 # Configuration
-MODEL_ID = "outputs/page/qwen3.5-4B"
-OUTPUT_DIR = "outputs/selective/qwen3.5-4B"
+MODEL_ID = "outputs/page/qwen3.5-4B-lora"
+OUTPUT_DIR = "outputs/selective/qwen3.5-4B-selective"
 DATA_DIR = "data/selective/train"
 
 # Avoid memory fragmentation
@@ -63,8 +64,8 @@ def train():
         finetune_language_layers   = True,
         finetune_attention_modules = True,
         finetune_mlp_modules       = True,
-        r = 16,
-        lora_alpha = 32,
+        r = 32,
+        lora_alpha = 64,
         lora_dropout = 0,
         bias = "none",
         random_state = 3407,
@@ -80,10 +81,14 @@ def train():
 
     def format_dataset(example):
         system_prompt = "You are a specialized Selective OCR engine. Transcribe the handwriting while ignoring any crossed-out or struck-through text."
+        
+        # Apply NFKC Unicode normalization to standardize characters
+        normalized_text = unicodedata.normalize("NFKC", example["text"])
+        
         messages = [
             {"role": "system", "content": [{"type": "text", "text": system_prompt}]},
             {"role": "user", "content": [{"type": "image", "image": example["image_path"]}, {"type": "text", "text": "Transcribe the text, ignoring strikeouts."}]},
-            {"role": "assistant", "content": [{"type": "text", "text": example["text"]}]}
+            {"role": "assistant", "content": [{"type": "text", "text": normalized_text}]}
         ]
         example["prompt_text"] = processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=False, enable_thinking=False)
         return example
@@ -92,8 +97,8 @@ def train():
 
     training_args = TrainingArguments(
         output_dir=OUTPUT_DIR,
-        per_device_train_batch_size=4,
-        gradient_accumulation_steps=16, # Effective batch size 64
+        per_device_train_batch_size=16,
+        gradient_accumulation_steps=4, # Effective batch size 64
         warmup_steps=50,
         max_steps=500,
         learning_rate=1e-4,

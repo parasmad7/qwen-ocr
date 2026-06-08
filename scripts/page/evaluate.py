@@ -10,12 +10,26 @@ import re
 import unicodedata
 
 def normalize_text(text):
+    """
+    Standardizes text by normalizing Unicode and cleaning horizontal whitespace 
+    while strictly preserving newlines for full-page structure evaluation.
+    """
     if not text:
         return ""
+    # Normalize Unicode (standardizes ligatures, accented chars, etc.)
     text = unicodedata.normalize("NFKC", text)
     text = text.lower()
-    text = re.sub(r"\s+", " ", text)
-    return text.strip()
+    
+    # Remove spaces before punctuation (common in handwriting OCR noise)
+    text = re.sub(r"[ \t]+([,.!?;:])", r"\1", text)
+    
+    # Standardize horizontal whitespace (collapse multiple spaces/tabs into one)
+    # Note: We use [ \t] instead of \s to preserve \n
+    text = re.sub(r"[ \t]+", " ", text)
+    
+    # Strip leading/trailing whitespace from each line
+    lines = [line.strip() for line in text.split("\n")]
+    return "\n".join(lines).strip()
 
 def evaluate(model_id, data_dir, num_samples, batch_size):
     metadata_path = os.path.join(data_dir, "metadata.jsonl")

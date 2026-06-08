@@ -20,53 +20,61 @@ The project is split into three specialized pipelines:
    curl -LsSf https://astral.sh/uv/install.sh | sh
    ```
 
-2. Create environment and install dependencies:
+2. Initialize and setup project:
    ```bash
-   uv venv
-   source .venv/bin/activate
-   uv pip install -r requirements.txt
+   # Automatically syncs dependencies AND installs performance kernels
+   uv run setup
    ```
+
+
+
+
 
 3. Prepare the dataset:
    ```bash
-   python scripts/prepare_data.py
+   uv run scripts/prepare_data.py
    ```
 
 ## Training
-To start training on A100 GPUs (requires ~35GB VRAM for full-page):
+To start training on A100 GPUs:
 ```bash
 # Line-level training
-CUDA_VISIBLE_DEVICES=0 python scripts/line/train.py
+CUDA_VISIBLE_DEVICES=0 uv run scripts/line/train.py
 
 # Full-page training
-CUDA_VISIBLE_DEVICES=0 python scripts/page/train.py
+CUDA_VISIBLE_DEVICES=0 uv run scripts/page/train.py
 
 # Selective OCR training
-CUDA_VISIBLE_DEVICES=0 python scripts/selective/train.py
+CUDA_VISIBLE_DEVICES=0 uv run scripts/selective/train.py
 ```
+
 The scripts are heavily optimized using **Unsloth** and **QLoRA** (4-bit), utilizing `finetune_vision_layers` and custom DataCollators to mask prompts and prevent "prompt washing".
 
 ## Evaluation & Inference
-**Performance:**
-- **Full-page Model:** Achieved **CER: 0.0028** (0.28%) and **WER: 0.0057** (0.57%) on hold-out synthetic data.
-- **Selective OCR:** Phase 1 results achieved **CER: 4.11** (a significant improvement over the 5.04 baseline, with further training ongoing).
+**Performance (Fine-Tuned vs. Zero-Shot Baseline):**
+| Task | Dataset | Baseline CER | Fine-Tuned CER | Baseline WER | Fine-Tuned WER |
+|------|---------|-------------|----------------|-------------|----------------|
+| **Line-Level** | IAM Handwriting | 0.0370 (3.7%) | 0.0236 (2.36%) | 0.1520 (15.2%) | 0.0697 (6.97%) |
+| **Full-Page** | Synthetic | 0.0377 (3.77%) | 0.0028 (0.28%) | 0.2233 (22.33%) | 0.0057 (0.57%) |
+| **Selective OCR** | Synthetic | 0.1783 (17.8%) | 0.0052 (0.52%) | 0.3460 (34.6%) | 0.0255 (2.55%) |
 
 Evaluation scripts identify "Outliers" (samples with CER > 10%) to help pinpoint failure modes.
 
 ### Run Evaluation
 ```bash
 # Line-level (Default to Qwen/Qwen3.5-4B base model)
-python scripts/line/evaluate.py --num_samples 100
+uv run scripts/line/evaluate.py --num_samples 100
 
 # Fine-tuned Line Model
-python scripts/line/evaluate.py --model "outputs/line/checkpoint-300"
+uv run scripts/line/evaluate.py --model "outputs/line/checkpoint-300"
 
 # Full-page Model
-python scripts/page/evaluate.py --model "outputs/page/qwen3.5-4B" --batch_size 16
+uv run scripts/page/evaluate.py --model "outputs/page/qwen3.5-4B" --batch_size 16
 
 # Selective OCR Model
-python scripts/selective/evaluate.py --model "outputs/selective/qwen3.5-4B" --batch_size 16
+uv run scripts/selective/evaluate.py --model "outputs/selective/qwen3.5-4B" --batch_size 16
 ```
+
 
 ```
 

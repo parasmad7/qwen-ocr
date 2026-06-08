@@ -1,5 +1,6 @@
 import os
 import torch
+import unicodedata
 from unsloth import FastVisionModel
 from datasets import load_dataset
 from transformers import TrainingArguments
@@ -137,10 +138,14 @@ def train():
     def format_dataset(example):
         system_prompt = "You are a specialized full-page OCR engine. Output ONLY the transcribed text from the image maintaining line breaks and structure, without any explanation or reasoning."
         img_ref = example.get("image_path", example["image"])
+        
+        # Apply NFKC Unicode normalization to standardize characters
+        normalized_text = unicodedata.normalize("NFKC", example["text"])
+        
         messages = [
             {"role": "system", "content": [{"type": "text", "text": system_prompt}]},
             {"role": "user", "content": [{"type": "image", "image": img_ref}, {"type": "text", "text": "Transcribe this full page."}]},
-            {"role": "assistant", "content": [{"type": "text", "text": example["text"]}]}
+            {"role": "assistant", "content": [{"type": "text", "text": normalized_text}]}
         ]
         example["prompt_text"] = processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=False, enable_thinking=False)
         return example

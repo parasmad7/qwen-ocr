@@ -1,7 +1,41 @@
 [project]
 name = "qwen-ocr"
 version = "0.1.0"
-description = "Add your description here"
+description = "Qwen3.5-4B Handwriting OCR Fine-Tuning Lab"
 readme = "README.md"
 requires-python = ">=3.11"
-dependencies = []
+dependencies = [
+    "unsloth",
+    "transformers",
+    "peft",
+    "trl",
+    "bitsandbytes",
+    "accelerate",
+    "qwen-vl-utils",
+    "pillow",
+    "datasets",
+    "sentencepiece",
+    "protobuf",
+    "jiwer",
+    "tqdm",
+]
+
+[project.optional-dependencies]
+kernels = [
+    "flash-attn",
+    "causal-conv1d",
+    "flash-linear-attention",
+]
+
+
+[project.scripts]
+setup = "setup:main"
+
+[tool.uv]
+managed = true
+
+[dependency-groups]
+dev = []
+
+
+

@@ -10,12 +10,25 @@ import re
 import unicodedata
 
 def normalize_text(text):
+    """
+    Standardizes text by normalizing Unicode and cleaning horizontal whitespace 
+    while strictly preserving newlines for full-page structure evaluation.
+    """
     if not text:
         return ""
+    # Normalize Unicode (standardizes ligatures, accented chars, etc.)
     text = unicodedata.normalize("NFKC", text)
     text = text.lower()
-    text = re.sub(r"\s+", " ", text)
-    return text.strip()
+    
+    # Remove spaces before punctuation (common in handwriting OCR noise)
+    text = re.sub(r"[ \t]+([,.!?;:])", r"\1", text)
+    
+    # Standardize horizontal whitespace (collapse multiple spaces/tabs into one)
+    text = re.sub(r"[ \t]+", " ", text)
+    
+    # Strip leading/trailing whitespace from each line
+    lines = [line.strip() for line in text.split("\n")]
+    return "\n".join(lines).strip()
 
 def evaluate(model_id, data_dir, num_samples, batch_size):
     metadata_path = os.path.join(data_dir, "metadata.jsonl")
@@ -72,8 +85,8 @@ def evaluate(model_id, data_dir, num_samples, batch_size):
             images=images_list, 
             return_tensors="pt", 
             padding=True,
-            min_pixels=256*256,
-            max_pixels=1024*1024 # Optimized for speed
+            min_pixels=512*512,
+            max_pixels=1344*1344 # Match training resolution for high-fidelity OCR
         ).to(model.device)
         
         output_ids = model.generate(
@@ -145,7 +158,7 @@ def evaluate(model_id, data_dir, num_samples, batch_size):
         print("No major outliers found.")
     
     # Save results
-    results_path = "evaluation_results_selective.json"
+    results_path = "scripts/selective/evaluation_finetuned.json"
     with open(results_path, "w") as f:
         json.dump({
             "model_id": model_id,
@@ -159,10 +172,11 @@ def evaluate(model_id, data_dir, num_samples, batch_size):
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model", type=str, default="outputs/page/qwen3.5-4B")
+    # parser.add_argument("--model", type=str, default="outputs/page/qwen3.5-4B-lora")
+    parser.add_argument("--model", type=str, default="outputs/selective/qwen3.5-4B-selective")
     parser.add_argument("--data_dir", type=str, default="data/selective/test")
     parser.add_argument("--num_samples", type=int, default=500)
-    parser.add_argument("--batch_size", type=int, default=16)
+    parser.add_argument("--batch_size", type=int, default=8) # Reduced to prevent OOM at higher resolution
     args = parser.parse_args()
     
     evaluate(args.model, args.data_dir, args.num_samples, args.batch_size)
