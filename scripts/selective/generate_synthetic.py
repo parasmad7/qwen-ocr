@@ -7,6 +7,7 @@ from tqdm import tqdm
 import numpy as np
 import textwrap
 import argparse
+import re
 
 try:
     from datasets import load_dataset
@@ -35,10 +36,19 @@ def get_font_paths():
     font_paths = [os.path.join(FONT_DIR, f) for f in os.listdir(FONT_DIR) if f.endswith(".ttf")]
     return font_paths
 
+def detokenize(text):
+    text = re.sub(r'\s([.,;:!?)\]}])', r'\1', text)
+    text = re.sub(r'([(\[{])\s', r'\1', text)
+    text = re.sub(r"\s'(s|t|re|ve|ll|d|m)\b", r"'\1", text)
+    text = re.sub(r"\s'(\w)", r"'\1", text)
+    text = re.sub(r'"\s', '"', text)
+    text = re.sub(r'\s"', '"', text)
+    return text
+
 def generate_random_text():
     num_lines = random.randint(10, 25)
     if WIKI_TEXTS:
-        return "\n".join(random.choices(WIKI_TEXTS, k=num_lines))
+        return detokenize("\n".join(random.choices(WIKI_TEXTS, k=num_lines)))
     
     sentences = [
         "The quick brown fox jumps over the lazy dog.",
@@ -152,29 +162,86 @@ def create_selective_page(text, font_path, output_path, word_strikeout_prob=0.2,
             image.paste(word_img, (x_cursor, paste_y), word_img)
             x_cursor += word_img.width - 10
             
+        if random.random() > 0.9:
+            current_y += line_spacing
+
         current_y += line_spacing + random.randint(-2, 2)
-        
-    image = image.rotate(random.uniform(-0.5, 0.5), resample=Image.BICUBIC, expand=False, fillcolor=(255, 255, 255))
-    image = ImageEnhance.Brightness(image).enhance(random.uniform(0.95, 1.05))
-    image = ImageEnhance.Contrast(image).enhance(random.uniform(0.95, 1.05))
+
+    if random.random() > 0.3:
+        side_words = random.choices(text.split(), k=random.randint(2, 3))
+        side_y = random.randint(margin_top, PAGE_SIZE[1] // 2)
+        side_x = PAGE_SIZE[0] - random.randint(40, 80)
+
+        for word in side_words:
+            dummy_bbox = draw.textbbox((0, 0), word, font=font)
+            sw, sh = dummy_bbox[2] - dummy_bbox[0] + 20, dummy_bbox[3] - dummy_bbox[1] + 20
+
+            sword_img = Image.new("RGBA", (sw, sh), (255, 255, 255, 0))
+            sword_draw = ImageDraw.Draw(sword_img)
+
+            s_ink = (random.randint(100, 150), 0, 0)
+            sword_draw.text((10, 10), word, font=font, fill=s_ink)
+
+            sword_img = sword_img.rotate(random.choice([90, -90, 0]), resample=Image.BICUBIC, expand=True)
+
+            clamped_x = min(side_x, PAGE_SIZE[0] - sword_img.width)
+            image.paste(sword_img, (clamped_x, side_y), sword_img)
+            text_elements.append({'text': word, 'x': clamped_x, 'y': side_y, 'w': sw})
+            side_y += sword_img.height + 10
+
+    image = image.rotate(random.uniform(-1.0, 1.0), resample=Image.BICUBIC, expand=False, fillcolor=(255, 255, 255))
+    image = ImageEnhance.Brightness(image).enhance(random.uniform(0.9, 1.1))
+    image = ImageEnhance.Contrast(image).enhance(random.uniform(0.9, 1.1))
+
+    if random.random() > 0.5:
+        image = image.filter(ImageFilter.GaussianBlur(radius=random.uniform(0.0, 0.5)))
     image.save(output_path)
     
     text_elements.sort(key=lambda e: e['y'])
-    final_lines = []
-    if text_elements:
-        curr_line_words = [text_elements[0]]
-        for i in range(1, len(text_elements)):
-            if abs(text_elements[i]['y'] - curr_line_words[-1]['y']) < line_spacing / 2:
-                curr_line_words.append(text_elements[i])
-            else:
-                curr_line_words.sort(key=lambda e: e['x'])
-                final_lines.append(" ".join([w['text'] for w in curr_line_words]))
-                curr_line_words = [text_elements[i]]
-        if curr_line_words:
-            curr_line_words.sort(key=lambda e: e['x'])
-            final_lines.append(" ".join([w['text'] for w in curr_line_words]))
-            
-    return "\n".join(final_lines)
+
+    lines = []
+    current_line = []
+    current_y = None
+    y_threshold = line_spacing / 2
+
+    for el in text_elements:
+        if current_y is None:
+            current_y = el['y']
+            current_line.append(el)
+        elif abs(el['y'] - current_y) <= y_threshold:
+            current_line.append(el)
+        else:
+            current_line.sort(key=lambda e: e['x'])
+            lines.append(current_line)
+            current_line = [el]
+            current_y = el['y']
+
+    if current_line:
+        current_line.sort(key=lambda e: e['x'])
+        lines.append(current_line)
+
+    final_lines_text = []
+    avg_char_width = font_size * 0.5
+    for line_elements in lines:
+        line_str = ""
+        last_x_end = margin_left
+
+        for el in line_elements:
+            gap = el['x'] - last_x_end
+            if gap > avg_char_width * 2 and line_str != "":
+                num_spaces = int(gap / avg_char_width)
+                line_str += " " * min(num_spaces, 20)
+            elif line_str != "":
+                line_str += " "
+
+            line_str += el['text']
+
+            dummy_bbox = draw.textbbox((0, 0), el['text'], font=font)
+            last_x_end = el['x'] + (dummy_bbox[2] - dummy_bbox[0])
+
+        final_lines_text.append(line_str.strip())
+
+    return "\n".join(final_lines_text)
 
 def main():
     parser = argparse.ArgumentParser()

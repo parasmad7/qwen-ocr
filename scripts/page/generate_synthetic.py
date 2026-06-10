@@ -1,5 +1,6 @@
 import os
 import random
+import re
 import requests
 from PIL import Image, ImageDraw, ImageFont, ImageFilter, ImageEnhance
 import json
