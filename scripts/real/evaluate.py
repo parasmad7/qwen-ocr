@@ -9,8 +9,75 @@ from PIL import Image
 from unsloth import FastVisionModel
 
 
-SYSTEM_PROMPT = "You are a specialized Selective OCR engine. Transcribe the handwriting while ignoring any crossed-out or struck-through text."
-USER_PROMPT = "Transcribe the text, ignoring strikeouts."
+SYSTEM_PROMPT = "You are an expert OCR assistant. Extract ALL visible text from this image."
+USER_PROMPT = """The black-filled regions are intentionally hidden - do not mention them or describe them.
+
+Formatting rules:
+1. If text appears in a data table (rows and columns of information), render it as a clean Markdown table (pipes and dashes) containing only the actual cell content - never copy the source image's border characters, grid lines, or box-drawing symbols into your output. Exception: division methods, long division, repeated division, conversion tables, and columnar calculations follow rules 15-20 instead.
+2. Preserve all line breaks exactly as they appear in the source document.
+3. Preserve indentation and spatial layout as much as possible.
+4. Output ONLY the extracted text - no preamble, no explanation, no commentary.
+
+Diagrams, flowcharts, decision trees, and process/flow charts:
+5. Extract the text inside every node/box and convert the diagram into a vertical flow representation.
+6. Preserve the actual execution/order of the flow shown by the arrows.
+7. For sequential flow, place each step on a new line separated by: ↓
+
+   Example:
+   Start
+   ↓
+   Input N
+   ↓
+   Process
+   ↓
+   End
+
+8. For decisions, preserve branches using:
+
+   Condition ?
+   Yes ↓
+   Next Step
+   No ↓
+   Alternative Step
+
+9. For nested decisions, continue the same structure recursively.
+10. Preserve loops by returning to the relevant earlier step using the same flow notation.
+11. Do not reproduce boxes, diamonds, circles, borders, connector lines, dashed lines, arrowheads, or any other visual diagram elements.
+12. Extract only visible text from nodes.
+13. Hidden text must be omitted completely. Do not guess, reconstruct, or use placeholders.
+14. Output only the meaningful flow content in reading/execution order.
+
+Tables, division methods, long division, repeated division, conversion tables, and columnar calculations:
+15. Preserve the original row-by-row structure.
+16. Extract each row as a separate line.
+17. Preserve column ordering from left to right.
+18. Do not convert tabular work into equations or prose.
+19. Do not reproduce borders, grid lines, brackets, or separators.
+20. Maintain spacing between columns where possible.
+
+Example:
+
+Image:
+
+2 | 145 | 1
+2 |  72 | 0
+2 |  36 | 0
+2 |  18 | 0
+2 |   9 | 1
+2 |   4 | 0
+2 |   2 | 0
+      1
+
+Output:
+
+2  145  1
+2   72  0
+2   36  0
+2   18  0
+2    9  1
+2    4  0
+2    2  0
+     1"""
 DEFAULT_MODEL = "outputs/real/qwen3.5-4B-real"
 
 
@@ -51,9 +118,9 @@ def load_data(annotations_path, images_dir):
         raw = json.load(f)
     data = []
     for entry in raw:
-        img_path = os.path.join(images_dir, entry["filename"])
+        img_path = os.path.join(images_dir, entry["file_name"])
         if os.path.exists(img_path):
-            data.append({"image": img_path, "text": entry["text"], "filename": entry["filename"]})
+            data.append({"image": img_path, "text": entry["text"], "file_name": entry["file_name"]})
     return data
 
 
@@ -156,7 +223,7 @@ def print_results(strict, content, model_id, data):
             if sample_cer > 0.1:
                 shown += 1
                 gt = normalize_strict(data[i]["text"])[:60]
-                print(f"  [{data[i]['filename']}] CER={sample_cer:.4f} | GT: '{gt}...'")
+                print(f"  [{data[i]['file_name']}] CER={sample_cer:.4f} | GT: '{gt}...'")
                 if shown >= 20:
                     remaining = sum(1 for c in metrics["per_sample_cer"][i + 1 :] if c > 0.1)
                     if remaining:
@@ -205,7 +272,7 @@ def main():
 
     print("\n--- Sample Predictions ---")
     for i in range(min(3, len(data))):
-        print(f"\n[{data[i]['filename']}]")
+        print(f"\n[{data[i]['file_name']}]")
         print(f"GT:   {data[i]['text'][:150]}")
         print(f"PRED: {predictions[i][:150]}")
         print("-" * 40)
@@ -219,7 +286,7 @@ def main():
         "n": strict["n"],
         "samples": [
             {
-                "filename": d["filename"],
+                "file_name": d["file_name"],
                 "reference": d["text"],
                 "prediction": p,
                 "strict_cer": sc,

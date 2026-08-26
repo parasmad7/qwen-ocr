@@ -159,7 +159,7 @@ def print_section(label, micro_cer, per_sample, samples, cer_threshold, show_sam
             for s, cer_val in category_samples[cat][:show_samples]:
                 gt_n = normalize_strict(s["reference"])
                 pred_n = normalize_strict(s["prediction"])
-                print(f"    [{s['filename'][:55]}] CER={cer_val:.4f}")
+                print(f"    [{s['file_name'][:55]}] CER={cer_val:.4f}")
                 print(f"    GT   ({len(gt_n):>4} chars): {gt_n[:100]}")
                 print(f"    PRED ({len(pred_n):>4} chars): {pred_n[:100]}")
 
