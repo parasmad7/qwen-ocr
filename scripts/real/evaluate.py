@@ -116,24 +116,26 @@ def compute_metrics(references, predictions, normalize_fn):
     norm_refs = [normalize_fn(r) for r in references]
     norm_preds = [normalize_fn(p) for p in predictions]
 
-    valid = [(r, p) for r, p in zip(norm_refs, norm_preds) if r]
-    if not valid:
-        return {"cer": float("nan"), "n": 0, "per_sample_cer": []}
-
-    refs, preds = zip(*valid)
-
     total_edits = 0
     total_chars = 0
     per_sample = []
-    for r, p in zip(refs, preds):
+    n_evaluated = 0
+
+    for r, p in zip(norm_refs, norm_preds):
+        if not r:
+            per_sample.append(None)
+            continue
         ed = edit_distance(r, p)
         total_edits += ed
         total_chars += len(r)
         per_sample.append(ed / len(r))
+        n_evaluated += 1
 
     return {
-        "cer": total_edits / total_chars,
-        "n": len(refs),
+        "cer": total_edits / total_chars if total_chars else float("nan"),
+        "n": n_evaluated,
+        "n_total": len(references),
+        "n_empty": len(references) - n_evaluated,
         "per_sample_cer": per_sample,
     }
 
@@ -143,22 +145,22 @@ def print_results(strict, content, model_id, data):
     print("REAL-WORLD EVALUATION RESULTS")
     print(f"{'=' * 60}")
     print(f"Model:    {model_id}")
-    print(f"Samples:  {strict['n']}")
+    print(f"Samples:  {strict['n_total']} total ({strict['n']} evaluated, {strict['n_empty']} empty GT)")
     print(f"\n  Strict CER (layout-aware):     {strict['cer']:.4f} ({strict['cer']*100:.2f}%)")
     print(f"  Content CER (whitespace-flat):  {content['cer']:.4f} ({content['cer']*100:.2f}%)")
     print(f"{'=' * 60}")
 
     for label, metrics in [("STRICT", strict), ("CONTENT", content)]:
-        outlier_count = sum(1 for c in metrics["per_sample_cer"] if c > 0.1)
+        outlier_count = sum(1 for c in metrics["per_sample_cer"] if c is not None and c > 0.1)
         print(f"\n--- {label} Outliers (CER > 10%): {outlier_count} / {metrics['n']} ---")
         shown = 0
         for i, sample_cer in enumerate(metrics["per_sample_cer"]):
-            if sample_cer > 0.1:
+            if sample_cer is not None and sample_cer > 0.1:
                 shown += 1
                 gt = normalize_strict(data[i]["text"])[:60]
                 print(f"  [{data[i]['file_name']}] CER={sample_cer:.4f} | GT: '{gt}...'")
                 if shown >= 20:
-                    remaining = sum(1 for c in metrics["per_sample_cer"][i + 1 :] if c > 0.1)
+                    remaining = sum(1 for c in metrics["per_sample_cer"][i + 1 :] if c is not None and c > 0.1)
                     if remaining:
                         print(f"  ... and {remaining} more outliers")
                     break
@@ -217,6 +219,8 @@ def main():
         "strict_cer": strict["cer"],
         "content_cer": content["cer"],
         "n": strict["n"],
+        "n_total": strict["n_total"],
+        "n_empty": strict["n_empty"],
         "samples": [
             {
                 "file_name": d["file_name"],
